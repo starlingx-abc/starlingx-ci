@@ -1,0 +1,31 @@
+#!/bin/bash -e
+
+sudo -E /stx-ci/scripts/stx-build-setup
+source /localdisk/config/prj-$MYPROJECTNAME.conf
+
+cd $MY_REPO/stx
+echo generate-cgcs-centos-repo start
+$MY_REPO_ROOT_DIR/stx-tools/toCOPY/generate-cgcs-centos-repo.sh /import/mirrors/CentOS/mirror/
+ln -sf /import/mirrors/CentOS/mirror/downloads ./
+mkdir -p /localdisk/loadbuild/$MYUNAME/$MYPROJECTNAME/std/tmp
+mkdir -p /localdisk/loadbuild/$MYUNAME/$MYPROJECTNAME/rt/tmp
+echo generate-cgcs-centos-repo end
+mem_size_gi=$(free -g | awk '/^Mem:/{print $2}')
+if [ $mem_size_gi -lt 20 ]; then
+    echo "small memory system, limit workers to 1"
+    sed -i 's/ABSOLUTE_MAX_WORKERS=.*/ABSOLUTE_MAX_WORKERS=1/g' $MY_REPO/build-tools/build-rpms-parallel
+fi
+echo build-pkgs start
+time build-pkgs $@
+echo build-pkgs done
+echo build-iso start
+time build-iso
+echo build-iso done
+echo "build openstack helm charts start"
+build-helm-charts.sh --os centos --label centos-stable-latest --app stx-openstack --rpm stx-openstack-helm --verbose
+echo "build openstack helm charts done"
+
+mkdir -p /localdisk/pub
+cp -L -v $MY_BUILD_DIR/export/bootimage.iso /localdisk/pub
+cp -L -v $MY_BUILD_DIR/export/bootimage.sig /localdisk/pub
+cp -L -v $MY_WORKSPACE/std/build-helm/stx/*.tgz /localdisk/pub

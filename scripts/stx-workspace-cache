@@ -1,0 +1,62 @@
+#!/bin/bash -e
+
+sudo -E /stx-ci/scripts/stx-build-setup
+source /localdisk/config/prj-$MYPROJECTNAME.conf
+
+: ${STX_RELEASE_URL:=http://mirror.starlingx.cengn.ca/mirror/starlingx/master/centos/latest_build}
+
+function folder_download()
+{
+    from=$1
+    to=$2
+    wget -q -nH -np -nd -r -R "*.html" -P $to -l 1 $STX_RELEASE_URL/$from
+}
+
+if [ -e $MY_WORKSPACE/.init_done ]; then
+    echo workspace init done
+    exit 0
+fi
+
+mkdir -p $MY_WORKSPACE
+cd $MY_WORKSPACE
+
+echo folder_download outputs/RPMS/std std/rpmbuild/RPMS
+time folder_download outputs/RPMS/std std/rpmbuild/RPMS
+
+echo folder_download outputs/RPMS/rt rt/rpmbuild/RPMS
+time folder_download outputs/RPMS/rt rt/rpmbuild/RPMS
+
+echo folder_download outputs/RPMS/installer installer/rpmbuild/RPMS
+time folder_download outputs/RPMS/installer installer/rpmbuild/RPMS
+
+echo folder_download outputs/SRPMS/std std/rpmbuild/SRPMS
+time folder_download outputs/SRPMS/std std/rpmbuild/SRPMS
+
+echo folder_download outputs/SRPMS/rt rt/rpmbuild/SRPMS
+time folder_download outputs/SRPMS/rt rt/rpmbuild/SRPMS
+
+echo folder_download outputs/SRPMS/installer installer/rpmbuild/SRPMS
+time folder_download outputs/SRPMS/installer installer/rpmbuild/SRPMS
+
+touch $MY_WORKSPACE/std/rpmbuild/RPMS/*
+for srpm_path in $(find $MY_WORKSPACE/std/rpmbuild/SRPMS -name '*.src.rpm' | sort -V); do
+    BN=$(basename ${srpm_path//.src.rpm/})
+    mkdir -p $MY_WORKSPACE/std/results/${USER}-${MYPROJECTNAME}-${MY_TC_RELEASE}-std/$BN
+    touch $MY_WORKSPACE/std/results/${USER}-${MYPROJECTNAME}-${MY_TC_RELEASE}-std/$BN/success
+done
+
+touch $MY_WORKSPACE/rt/rpmbuild/RPMS/*
+for srpm_path in $(find $MY_WORKSPACE/rt/rpmbuild/SRPMS -name '*.src.rpm' | sort -V); do
+    BN=$(basename ${srpm_path//.src.rpm/})
+    mkdir -p $MY_WORKSPACE/rt/results/${USER}-${MYPROJECTNAME}-${MY_TC_RELEASE}-rt/$BN
+    touch $MY_WORKSPACE/rt/results/${USER}-${MYPROJECTNAME}-${MY_TC_RELEASE}-rt/$BN/success
+done
+
+touch $MY_WORKSPACE/installer/rpmbuild/RPMS/*
+for srpm_path in $(find $MY_WORKSPACE/installer/rpmbuild/SRPMS -name '*.src.rpm' | sort -V); do
+    BN=$(basename ${srpm_path//.src.rpm/})
+    mkdir -p $MY_WORKSPACE/installer/results/${USER}-${MYPROJECTNAME}-${MY_TC_RELEASE}-installer/$BN
+    touch $MY_WORKSPACE/installer/results/${USER}-${MYPROJECTNAME}-${MY_TC_RELEASE}-installer/$BN/success
+done
+
+touch $MY_WORKSPACE/.init_done

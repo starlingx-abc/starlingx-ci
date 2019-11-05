@@ -1,0 +1,6 @@
+#!/bin/bash -e
+
+sudo -E /stx-ci/scripts/stx-build-setup
+source /localdisk/config/prj-$MYPROJECTNAME.conf
+
+sudo -E -u $MYUNAME bash --rcfile /localdisk/config/prj-$MYPROJECTNAME.conf

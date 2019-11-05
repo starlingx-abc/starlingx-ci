@@ -1,0 +1,35 @@
+#!/bin/bash -e
+
+sudo -E /stx-ci/scripts/stx-build-setup
+source /localdisk/config/prj-$MYPROJECTNAME.conf
+
+if [ -e $MY_REPO/.patch_init_done ]; then
+    echo patch init done
+    exit 0
+fi
+
+: ${STX_GERRIT:=review.opendev.org}
+PORT=29418
+GERRIT_CMD="ssh -p $PORT $STX_GERRIT gerrit"
+
+patch_list=$@
+echo "patch_list: $patch_list"
+
+cd /localdisk/designer/$MYUNAME/$MYPROJECTNAME
+
+mkdir -p gerrit_patches
+
+for p in $patch_list; do
+	echo "apply patch #$p ..."
+	$GERRIT_CMD query --format=TEXT --current-patch-set=$p > gerrit_patches/$p.info
+	prj=`grep 'project:' gerrit_patches/$p.info | cut -d':' -f 2 | tr -d ' '`
+	pset=`grep -A1  "currentPatchSet:" gerrit_patches/$p.info | grep number | cut -d':' -f 2 | tr -d ' '`
+	ref=`grep -A10  "currentPatchSet:" gerrit_patches/$p.info | grep 'ref:' | cut -d':' -f 2 | tr -d ' '`
+	prj_path=`grep "host.*=.*$STX_GERRIT.*project.*=.*$prj" . -z -l -s -r --include=".gitreview" | sed 's/.gitreview//g'`
+	cd $prj_path
+	git fetch https://$STX_GERRIT/$prj $ref && git cherry-pick FETCH_HEAD
+	cd -
+done
+
+echo "apply all patches successfully"
+touch $MY_REPO/.patch_init_done

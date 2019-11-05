@@ -1,0 +1,23 @@
+#!/bin/bash -e
+
+NCPUS=$(grep -c ^processor /proc/cpuinfo)
+sudo -E /stx-ci/scripts/stx-build-setup
+source /localdisk/config/prj-$MYPROJECTNAME.conf
+
+if [ -e $MY_REPO/.repo_init_done ]; then
+    echo repo init done
+    exit 0
+fi
+
+rm -rf /localdisk/manifest
+mkdir /localdisk/manifest
+cd /localdisk/manifest
+git init
+wget -O manifest.xml $STX_MANIFEST
+git add manifest.xml
+git commit -a -s -m "$STX_MANIFEST"
+mkdir -p /localdisk/designer/$MYUNAME/$MYPROJECTNAME
+cd /localdisk/designer/$MYUNAME/$MYPROJECTNAME
+repo init -u /localdisk/manifest -m manifest.xml
+repo sync -q -j$NCPUS
+touch $MY_REPO/.repo_init_done
