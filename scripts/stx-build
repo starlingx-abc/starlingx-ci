@@ -22,7 +22,8 @@ echo build-iso start
 time build-iso
 echo build-iso done
 echo "build openstack helm charts start"
-build-helm-charts.sh --os centos --label centos-stable-latest --app stx-openstack --rpm stx-openstack-helm --verbose
+wget -q -O $MY_WORKSPACE/images-centos-stable-versioned.lst $STX_RELEASE_URL/outputs/docker-images/images-centos-stable-versioned.lst
+build-helm-charts.sh --os centos --image-record $MY_WORKSPACE/images-centos-stable-versioned.lst --label centos-stable-versioned --app stx-openstack --rpm stx-openstack-helm --verbose
 echo "build openstack helm charts done"
 
 mkdir -p /localdisk/pub

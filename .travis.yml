@@ -21,6 +21,8 @@ script:
   - if [ "$TRAVIS_BRANCH" = "master" ]; then DOCKER_IMG_TAG="latest"; else DOCKER_IMG_TAG="$TRAVIS_BRANCH"; fi
     # Download the code base of StarlingX
   - time ./build.sh /stx-ci/scripts/stx-repo-init || exit 1
+    # Apply patches from review.opendev.org
+  - time ./build.sh "/stx-ci/scripts/stx-apply-gerrit-patches 689869" || exit 1
     # Create the mirror of upstream packages from cengn. It is much faster than downloading from original upstream URLs
   - time ./build.sh /stx-ci/scripts/stx-mirror-init || exit 1
     # Create the build cache from cengn to speed up build. This step can be ignored if rebuild all packages

@@ -5,9 +5,9 @@ NCPUS=$(grep -c ^processor /proc/cpuinfo)
 mkdir -p $PWD/localdisk
 mkdir -p $PWD/import
 
-STX_BUILD_DOCKER_IMG="starlingxabc/stx-build"
-STX_MANIFEST='https://opendev.org/starlingx/manifest/raw/branch/master/default.xml'
-STX_RELEASE_URL='http://mirror.starlingx.cengn.ca/mirror/starlingx/master/centos/latest_build'
+STX_BUILD_DOCKER_IMG="starlingxabc/stx-build:2.0.0"
+STX_MANIFEST='https://opendev.org/starlingx/manifest/raw/tag/2.0.0/stx.2.0.0.xml'
+STX_RELEASE_URL='http://mirror.starlingx.cengn.ca/mirror/starlingx/release/2.0.0/centos'
 
 STX_BUILD_DOCKER_OPTS=" --name stx-ci --rm --privileged=true -u builder
     --env http_proxy --env https_proxy --env no_proxy
