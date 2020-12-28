@@ -1,0 +1,184 @@
+#!/bin/bash -e
+
+cd `dirname $0`
+
+echo -n "Lock ..."
+exec 100>.lock
+flock -w 3 -x 100
+echo "Done"
+echo $$ > pid.sync
+
+echo "update start: `date`" | tee -a log
+
+: ${OPENSTACK_HELM_CHARTS_URL:="http://mirror.starlingx.cengn.ca/mirror/starlingx/master/centos/monolithic/latest_build/outputs/helm-charts/helm-charts-stx-openstack-centos-stable-latest.tgz"}
+
+REGISTRY="localhost:5000"
+
+function check_image()
+{
+  local reg="$1"
+  local img=`echo $2 | cut -d':' -f 1`
+  local tag=`echo $2 | cut -d':' -f 2`
+  if echo $tag | grep latest; then
+    return 1 #always sync it
+  fi
+  curl --silent $reg/v2/$img/tags/list | grep -q -w "$tag"
+}
+
+function fixup_docker_images()
+{
+  grep --no-filename -o "{{.*_registry.url[[:space:]]*}}/[^[:space:]]*" $1 -r \
+    | sed "s/[\'\"]//g" | sed "s/{{[[:space:]]*//g" | sed "s/[[:space:]]*}}//g" \
+    | sed "s/quay_registry.url/quay.io/g" \
+    | sed "s/k8s_registry.url/k8s.gcr.io/g" \
+    | sed "s/gcr_registry.url/gcr.io/g" \
+    | sed "s/docker_registry.url/docker.io/g" \
+    | sed "s/elastic_registry.url/docker.elastic.co/g"
+}
+
+function get_docker_images()
+{
+  grep -E -w -o "docker.io/.*|quay.io/.*|gcr.io/.*|k8s.gcr.io/.*|docker.elastic.co/.*" $1 -r --no-filename --include=*.yml --include=*.yaml \
+	  | sed "s/[\'\"]/ /g" | awk -p '{print $1}' | tr -d " " | sort | uniq
+  grep -E -w -o "trustpilot/.*|untergeek/.*" $1 -r --no-filename --include=*.yml --include=*.yaml \
+	  | sed "s/[\'\"]/ /g" | awk -p '{print $1}' | tr -d " " | sort | uniq
+}
+
+function fixup_get_docker_images()
+{
+  local img
+  local tag
+
+  while read img; do
+    if echo $img | grep -q ":"; then
+      if ! echo $img | grep -q -w -E "docker.io/.*|quay.io/.*|gcr.io/.*|k8s.gcr.io/.*|docker.elastic.co/.*"; then
+        echo docker.io/$img
+      else
+        echo $img
+      fi
+    else
+      found=n
+      for tag in `grep "$img" $1 -r --no-filename --include=*.yml --include=*.yaml -A1 | grep tag: | sed "s/.*tag.*://g" | sed "s/[\'\"]//g" | sort | uniq`; do
+        found=y
+        if ! echo $img | grep -q -w -E "docker.io/.*|quay.io/.*|gcr.io/.*|k8s.gcr.io/.*|docker.elastic.co/.*"; then
+          echo docker.io/$img:$tag
+        else
+          echo $img:$tag
+        fi
+      done
+      if [ $found = n ]; then
+          echo $img
+      fi
+    fi
+  done
+}
+
+function sync_images()
+{
+  local reg
+  local img
+  local limg
+
+  while read img; do
+    reg=`echo $img | cut -d '/' -f 1`
+    limg=`echo $img | cut -d '/' -f 2-`
+    img_name=`echo $img | awk -F'/' '{print $NF}'`
+
+    if [ "$reg" = "docker.io" ]; then
+      echo "ignore $img"
+      continue
+    fi
+
+    echo -n "check img: $img ..."
+    if check_image $REGISTRY $limg; then
+      echo "OK"
+      continue
+    fi
+    echo
+
+#    echo "img: $img"
+#    echo "local img: $limg"
+    if ! sudo docker pull $img; then
+      if echo $img | grep 'docker.io/openstackhelm/placement:'; then
+        echo "ignore $img ..."
+        continue;
+      fi
+    fi
+
+    sudo docker tag $img starlingxyz/$img_name
+    sudo docker push starlingxyz/$img_name
+
+    sudo docker tag $img $REGISTRY/$limg
+    sudo docker push $REGISTRY/$limg
+  done
+}
+
+function cleanup_images()
+{
+  sudo docker image prune -af
+  sudo docker exec -t registry-srv registry garbage-collect /etc/docker/registry/config.yml --delete-untagged=true
+}
+
+function list_images()
+{
+  for repo in $(curl --silent $REGISTRY/v2/_catalog | jq -r .repositories[]); do
+    for tag in $(curl --silent $REGISTRY/v2/${repo}/tags/list | jq -r .tags[]); do
+      echo $repo:$tag
+    done
+  done
+}
+
+function kube_images()
+{
+  mkdir tmp/kubeadm
+  cd tmp/kubeadm
+  kubeadm_rpm=`wget -q -O- http://mirror.starlingx.cengn.ca/mirror/starlingx/master/centos/distro/latest_build/outputs/RPMS/std/ | grep -oP -w -m 1 kubernetes-kubeadm-.*?.rpm | head -n 1`
+  wget -q http://mirror.starlingx.cengn.ca/mirror/starlingx/master/centos/distro/latest_build/outputs/RPMS/std/$kubeadm_rpm
+  rpm2cpio $kubeadm_rpm | cpio -dim > /dev/null
+  ./usr/bin/kubeadm config images list
+  cd - > /dev/null
+}
+
+rm -rf tmp/
+mkdir tmp/
+
+wget -O build_info.txt "http://mirror.starlingx.cengn.ca/mirror/starlingx/master/centos/flock/latest_build/outputs/ISO_BUILD_INFO.txt"
+
+cat > docker_images.txt <<__EOF__
+docker.io/rook/ceph:v1.1.1
+quay.io/cephcsi/cephcsi:v1.2.1
+quay.io/k8scsi/csi-node-driver-registrar:v1.1.0
+quay.io/k8scsi/csi-provisioner:v1.3.0
+quay.io/k8scsi/csi-snapshotter:v1.2.0
+quay.io/k8scsi/csi-attacher:v1.2.0
+docker.io/ceph/ceph:v13.2.2-20190410
+__EOF__
+
+#kube_images >> docker_images.txt
+
+mkdir tmp/openstack
+wget -O tmp/openstack/latest.tgz "$OPENSTACK_HELM_CHARTS_URL"
+tar xzvf tmp/openstack/latest.tgz -C tmp/openstack
+find tmp/openstack -name "*.tgz" -exec tar xzvf {} -C tmp/openstack/charts/ \;
+
+
+git clone https://opendev.org/starlingx/config.git tmp/config --depth=1
+git clone https://opendev.org/starlingx/ansible-playbooks.git tmp/ansible-playbooks --depth=1
+git clone https://opendev.org/starlingx/oidc-auth-armada-app.git tmp/oidc-auth-armada-app --depth=1
+git clone https://opendev.org/starlingx/cert-manager-armada-app.git tmp/cert-manager-armada-app --depth=1
+
+fixup_docker_images tmp/ansible-playbooks > tmp/fixup.yml
+get_docker_images tmp/ | fixup_get_docker_images tmp/ >> docker_images.txt
+
+cat docker_images.txt | sync_images
+
+cleanup_images
+
+#list_images > docker_images.txt
+
+echo `date` > latest.txt
+cp -f latest.txt www/
+cp -f build_info.txt www/
+cp -f docker_images.txt www/latest_docker_images.txt
+
+echo "update end: `date`" | tee -a log

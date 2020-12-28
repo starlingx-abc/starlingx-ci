@@ -28,6 +28,7 @@ if [ -z "$1" ]; then
 	sudo docker run $STX_BUILD_DOCKER_OPTS /bin/bash -c -x -e "/stx-ci/scripts/stx-repo-init"
 	sudo docker run $STX_BUILD_DOCKER_OPTS /bin/bash -c -x -e "/stx-ci/scripts/stx-mirror-init"
 	sudo docker run $STX_BUILD_DOCKER_OPTS /bin/bash -c -x -e "/stx-ci/scripts/stx-build"
+	sudo docker run $STX_BUILD_DOCKER_OPTS /bin/bash -c -x -e "/stx-ci/scripts/stx-image-sync"
 else
 	sudo docker run $STX_BUILD_DOCKER_OPTS /bin/bash -c -x -e "$@"
 fi
