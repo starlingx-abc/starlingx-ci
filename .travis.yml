@@ -25,6 +25,8 @@ script:
   - time ./build.sh /stx-ci/scripts/stx-mirror-init || exit 1
     # Create the build cache from cengn to speed up build. This step can be ignored if rebuild all packages
   - time ./build.sh /stx-ci/scripts/stx-workspace-cache || exit 1
+    # Push image to docker hub
+  - time ./build.sh /stx-ci/scripts/stx-image-sync || exit 1
   - while true; do echo keep alive ...; sleep 15; done & # workaround for travis limitation
     # Only rebuild sysinv because of build time limitation
     # To rebuild all packages, it needs 'Unlimited build minutes' account. Refer to: https://travis-ci.com/plans
